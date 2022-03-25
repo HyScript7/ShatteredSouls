@@ -1,0 +1,7 @@
+# Unimportant testing scripts
+*.fish
+*.py
+.vscode/
+
+# Sheet with abilities
+abilities.ods

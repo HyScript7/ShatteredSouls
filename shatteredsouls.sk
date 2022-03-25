@@ -1,0 +1,914 @@
+# 
+#   ____  _           _   _                    _   ____              _     
+#  / ___|| |__   __ _| |_| |_ ___ _ __ ___  __| | / ___|  ___  _   _| |___ 
+#  \___ \| '_ \ / _` | __| __/ _ \ '__/ _ \/ _` | \___ \ / _ \| | | | / __|
+#   ___) | | | | (_| | |_| ||  __/ | |  __/ (_| |  ___) | (_) | |_| | \__ \
+#  |____/|_| |_|\__,_|\__|\__\___|_|  \___|\__,_| |____/ \___/ \__,_|_|___/
+#   
+#
+# Name: Shattered Souls                                                                       
+# Author: HyScript7#1850 (Scriptian77)
+# License: MIT License
+# Version: 1.0
+#
+
+# Developer Note: The functions for dropExp in Spare & Shatter are not the same. Notice the KDR argument.
+
+# Calculates Kill death ratio
+function KDR(Kills: num, Deaths: num) :: num:
+    return ({_Kills}+{_Deaths}+1)/({_Deaths}+1)-1
+
+# Calculates time since supplied unix timestamp
+function Tmstmpdiff(Tmstmp: num) :: num:
+    return round(unix timestamp of now - {_Tmstmp})
+
+# Calculates how much ExP drops from an entity that isn't a player
+function mobExP(level: num, kdr: num, hp: num) :: num:
+    return round(({_level}/10)+1+{_kdr})*{_hp}/5*10
+
+# Calculates how much ExP drops from a player
+function dropExP(attackerlevel: num, victimlevel: num, kdr: num) :: num:
+    return round(({_attackerlevel}+10)/10*{_victimlevel}*{_kdr})
+
+# Function for handeling deaths caused by a player
+function deathBy(attacker: text, victim: text):
+    set {_attackername} to {ss::%{_attacker}%.Name}
+    set {_victimname} to {ss::%{_victim}%.Name}
+    # Modify stats
+    increase {ss::%{_victim}%.Deaths} by 1 # Increase the victims deaths
+    add {_victim} to {ss::%{_attacker}%.KR::*} # Add the victims UUID to the attackers Kill Record
+    increase {ss::%{_attacker}%.Kills} by 1 # Increase the attackers kills
+    set {ss::%{_attacker}%.KDR} to KDR({ss::%uuid of {_attacker}%.Kills}, {ss::%uuid of {_attacker}%.Deaths})
+    set {ss::%{_victim}%.KDR} to KDR({ss::%uuid of {_victim}%.Kills}, {ss::%uuid of {_victim}%.Deaths})
+    verifyLifes({ss::%{_victim}%.Name} parsed as player)
+    verifyLifes({ss::%{_attacker}%.Name} parsed as player)
+    # Send messages
+    send "&0[&aS&2Souls&0] &eYou have killed &6%{_victimname}%&e!" to {_attackername} parsed as player
+    send formatted "&0[&aS&2Souls&0] <cmd:/ss-shatter %{_victimname}%><tooltip:&7Click to shatter their soul>&c<<Shatter>> <cmd:/ss-spare %{_victimname}%><tooltip:&7Click to spare their soul>&a<<Spare>>" to {_attackername} parsed as player
+    send "&0[&aS&2Souls&0] &eYou have been killed by &6%{_attackername}%&e!" to {_victimname} parsed as player
+    stop
+
+# Calculates how much ExP you need for the provided level
+function getExP(level: num) :: num:
+    if {_level} is 51:
+        return 183750
+    return ({_level} - 1) * 150 * (({_level} - 2) / 2 + 1)
+
+# Checks if the player can level up, if they can, it levels them up
+function chkLV(uuid: text):
+    if {ss::%{_uuid}%.LV} is 50:
+        stop
+    if {ss::%{_uuid}%.ExP} >= getExP({ss::%{_uuid}%.LV}+1):
+        increase {ss::%{_uuid}%.LV} by 1
+        increase {ss::%{_uuid}%.MP} by 2
+        send "&0[&aS&2Souls&0] &eLevel up >> You are now level &6%{ss::%{_uuid}%.LV}%&e!" to {_uuid} parsed as player
+        chkLV({_uuid})
+    stop
+
+# Function for prestiging / rebirth
+function prestige(uuid: text):
+    if {ss::%{_uuid}%.LV} < 50:
+        send "&0[&aS&2Souls&0] &eYou must be &6Level 50&e to prestige!" to {ss::%{_uuid}%.Name} parsed as player
+        stop
+    # Prestige code
+    kill {ss::%{_uuid}%.Name} parsed as player
+    set {ss::%{_uuid}%.LV} to 1
+    set {ss::%{_uuid}%.ExP} to 0
+    set {ss::%{_uuid}%.Lifes} to 10
+    set {ss::%{_uuid}%.Deaths} to round({ss::%{_uuid}%.Deaths} / 100 * 15)
+    set {ss::%{_uuid}%.Kills} to round({ss::%{_uuid}%.Kills} / 100 * 15)
+    increase {ss::%{_uuid}%.Prestige} by 1
+    increase {ss::%{_uuid}%.MP} by 2
+    increase {ss::%{_uuid}%.Souls} by round({ss::%{_uuid}%.Souls}/100*15)
+    remove all objects from {ss::%{_uuid}%::DR::*}
+    set {ss::%{_uuid}%::KR::*} to "null"
+    set {ss::%{_uuid}%::DR::UUID} to "null"
+    set {ss::%{_uuid}%::DR::Time} to unix timestamp of now
+    send "&0[&aS&2Souls&0] &eYou have prestiged and now have &6%{ss::%{_uuid}%.Prestige}%&e prestiges!" to {ss::%{_uuid}%.Name} parsed as player
+    stop
+
+# Function for shattering souls
+function shatter(attacker: text, victim: text):
+    if {ss::%{_attacker}%.KR::*} doesn't contain {_victim}:
+        # You haven't had killed the victim
+        send "&0[&aS&2Souls&0] &eYou must kill &6%{ss::%{_victim}%.Name}%&e first!" to {ss::%{_attacker}%.Name} parsed as player
+        stop
+    if {ss::%{_victim}%.Lifes} <= 0:
+        send "&0[&aS&2Souls&0] &6%{ss::%{_victim}%.Name}%&e is a shade!" to {ss::%{_attacker}%.Name} parsed as player
+        stop
+    remove {_victim} from {ss::%{_attacker}%.KR::*}
+    reduce {ss::%{_victim}%.Lifes} by 1 # We reduce the victims lifes
+    increase {ss::%{_attacker}%.Souls} by {ss::%{_attacker}%.Prestige}+1 # We give the attacker souls
+    increase {ss::%{_attacker}%.ExP} by dropExP({ss::%{_attacker}%.LV}, {ss::%{_victim}%.LV}, {ss::%{_victim}%.KDR})
+    verifyLifes({ss::%{_victim}%.Name} parsed as player)
+    verifyLifes({ss::%{_attacker}%.Name} parsed as player)
+    send "&0[&aS&2Souls&0] &6%{ss::%{_victim}%.Name}%&e's soul has been shattered!" to {ss::%{_attacker}%.Name} parsed as player 
+    send "&0[&aS&2Souls&0] &eGained &6%{ss::%{_attacker}%.Prestige}+1%&e soul!" to {ss::%{_attacker}%.Name} parsed as player 
+    send "&0[&aS&2Souls&0] &6%{ss::%{_attacker}%.Name}%&e has shattered your soul!" to {ss::%{_victim}%.Name} parsed as player 
+    send "&0[&aS&2Souls&0] &eLost &61 &elife -> You now have &6%{ss::%{_victim}%.Lifes}%&e lifes!" to {ss::%{_victim}%.Name} parsed as player
+
+# Function for sparing souls
+function spare(attacker: text, victim:text):
+    if {ss::%{_attacker}%.KR::*} doesn't contain {_victim}:
+        # You haven't had killed the victim
+        send "&0[&aS&2Souls&0] &eYou must kill &6%{ss::%{_victim}%.Name}%&e first!" to {ss::%{_attacker}%.Name} parsed as player
+        stop
+    if {ss::%{_victim}%.Lifes} <= 0:
+        send "&0[&aS&2Souls&0] &6%{ss::%{_victim}%.Name}%&e is a shade!" to {ss::%{_attacker}%.Name} parsed as player
+        stop
+    remove {_victim} from {ss::%{_attacker}%.KR::*}
+    increase {ss::%{_attacker}%.ExP} by dropExP({ss::%{_attacker}%.LV}, {ss::%{_victim}%.LV}, {ss::%{_attacker}%.KDR})
+    verifyLifes({ss::%{_victim}%.Name} parsed as player)
+    verifyLifes({ss::%{_attacker}%.Name} parsed as player)
+    send "&0[&aS&2Souls&0] &6%{ss::%{_victim}%.Name}%&e has been spared!" to {ss::%{_attacker}%.Name} parsed as player 
+    send "&0[&aS&2Souls&0] &6%{ss::%{_attacker}%.Name}%&e has spared you!" to {ss::%{_victim}%.Name} parsed as player 
+
+# Calculates whenever the player is still trapped in the abyss or not.
+# It only sets the players Abyss.Trap value to either 0 (False) or 1 (True)
+function checkTimeAbyssTrap(uuid: text):
+    if {ss::%{_uuid}%::Abyss::Time} >= unix timestamp of now:
+        set {ss::%{_uuid}%::Abyss::Trap} to 1
+        stop 
+    set {ss::%{_uuid}%::Abyss::Trap} to 0
+    stop
+
+# Sets an abyss trap for the player for _time seconds.
+# Runs checkTimeAbyssTrap() to update the players Abyss.Trap value
+function setTimeAbyssTrap(uuid: text, time: num):
+    set {ss::%{_uuid}%::Abyss::Time} to unix timestamp of now + {_time}
+    checkTimeAbyssTrap({_uuid})
+    stop
+
+# Clears an abyss trap for the player
+# Sets the players Abyss.Trap value to false the correct way
+function clearTimeAbyssTrap(uuid: text):
+    set {ss::%{_uuid}%::Abyss::Time} to unix timestamp of now - 1
+    checkTimeAbyssTrap({_uuid})
+    stop
+
+# Teleports the _player to the abyss:
+function abyssSend(player: player):
+    teleport {_player} to location at 0, 69, 0 of world "world_ssouls_the_abyss" 
+    stop
+
+# Verifies if the player is abyss trapped or not
+# Updates Abyss.Trap value of player and sends to the Abyss if it is true.
+function verifyAbyssTrap(player: player):
+    set {_uuid} to uuid of {_player}
+    checkTimeAbyssTrap({_uuid})
+    if {ss::%{_uuid}%::Abyss::Trap} is 1:
+        abyssSend({_player})
+        stop
+
+# Verifies if the player is alive or not
+# Abyss Traps the player if they don't have any lifes left.
+function verifyLifes(player: player):
+    set {_uuid} to uuid of {_player}
+    if {ss::%{_uuid}%.Lifes} <= 0:
+        set {ss::%{_uuid}%.Lifes} to 0
+        if {ss::%{_uuid}%::Abyss::Trap} isn't 1:
+            increase {ss::%{_uuid}%::Abyss::Deaths} by 1 # If they just died now, they aren't abyss trapped, so we increase their Shade Deaths by 1 before abyss trapping.
+        setTimeAbyssTrap({_uuid}, 43200)
+        verifyAbyssTrap({_player}) # Since we just set the abyss trap, this will execute all neccesarry commands to abyss trap them
+        set {_player}'s gamemode to adventure
+    stop
+
+# Function for getting players morality points
+function getMoralityPoints(player: text, morality: text) :: num:
+    if {_morality} is "sin":
+        return {ss::%{_player}%.Sin}
+    if {_morality} is "virtue":
+        return {ss::%{_player}%.Virtue}
+    if {_morality} is "neutral":
+        if {ss::%{_player}%.Virtue} > {ss::%{_player}%.Sin}:
+            return {ss::%{_player}%.Sin}
+        return {ss::%{_player}%.Virtue}
+
+function addMoralityPoints(player: player, morality: text, points: num):
+    if {ss::%uuid of {_player}%.MP} >= {_points}:
+        reduce {ss::%uuid of {_player}%.MP} by {_points}
+        if {_morality} is "sin":
+            increase {ss::%uuid of {_player}%.Sin} by {_points}
+            send "&0[&aS&2Souls&0] &eAdded &6%{_points}%&e points to &6Sin" to {_player}
+            stop
+        if {_morality} is "virtue":
+            increase {ss::%uuid of {_player}%.Virtue} by {_points}
+            send "&0[&aS&2Souls&0] &eAdded &6%{_points}%&e points to &6Virtue" to {_player}
+            stop
+        send "&0[&aS&2Souls&0] &eYou don't have &6%{_points}%&e points!" to {_player}
+
+function getMoralityTier(player: text, morality: text) :: num:
+    if {_morality} is "neutral":
+        if {ss::%{_player}%.Virtue} > {ss::%{_player}%.Sin}:
+            return getMoralityTier({_player}, "sin")
+        return getMoralityTier({_player}, "virtue")
+    if {_morality} is "sin":
+        if {ss::%{_player}%.Sin} >= 300:
+            return 5
+        if {ss::%{_player}%.Sin} >= 260:
+            return 4
+        if {ss::%{_player}%.Sin} >= 200:
+            return 3
+        if {ss::%{_player}%.Sin} >= 120:
+            return 2
+        if {ss::%{_player}%.Sin} >= 60:
+            return 1
+        return 0
+    if {_morality} is "virtue":
+        if {ss::%{_player}%.Sin} >= 300:
+            return 5
+        if {ss::%{_player}%.Sin} >= 260:
+            return 4
+        if {ss::%{_player}%.Sin} >= 200:
+            return 3
+        if {ss::%{_player}%.Sin} >= 120:
+            return 2
+        if {ss::%{_player}%.Sin} >= 60:
+            return 1
+        return 0
+
+function getMoralityAlignment(player: text) :: text:
+    if {ss::%{_player}%.Sin} is {ss::%{_player}%.Virtue}:
+        return "neutral"
+    if {ss::%{_player}%.Sin} > {ss::%{_player}%.Virtue}:
+        return "sin"
+    return "virtue"
+
+# Revives a dead player [DOES NOT FREE FROM ABYSS, ONLY SETUPS UP THE VARIABLES]
+function revive(player: text):
+    set {ss::%{_player}%.Lifes} to 10
+    set {ss::%{_player}%::Abyss::Time} to unix timestamp of now - 1
+    checkTimeAbyssTrap({_player})
+
+# Resurrects a player if possible
+function resurrect(caster: player, target: player):
+    if {ss::%uuid of {_target}%.Lifes} <= 0:
+        if {ss::%uuid of {_caster}%.Souls} >= {ss::%uuid of {_target}%::Abyss::Deaths}:
+            reduce {ss::%uuid of {_caster}%.Souls} by {ss::%uuid of {_target}%::Abyss::Deaths} * 5
+            revive(uuid of {_target})
+            # Free them from the abyss
+            kill {_target}
+            reduce {ss::%{_target}%.Deaths} by 1
+            # Send messages
+            send "&0[&aS&2Souls&0] &eYou have resurrected %{_target}%" to {_caster}
+            send "&0[&aS&2Souls&0] &eYou have been resurrected by %{_caster}%" to {_target}
+            stop
+        send "&0[&aS&2Souls&0] &eYou need &6%{ss::%uuid of {_target}%::Abyss::Deaths}*5%&e souls to resurrect &6%{_target}%" to {_caster}
+        stop
+    send "&0[&aS&2Souls&0] &eYou cannot resurrect someone who isn't dead!" to {_caster}
+    stop
+
+# Setting up stats for the first time
+on join:
+    # UUID & Name
+    if {ss::%player%.UUID} is not set:
+        set {ss::%player%.UUID} to uuid of player
+    if {ss::%uuid of player%.Name} is not set:
+        set {ss::%uuid of player%.Name} to name of player
+    if {ss::%uuid of player%.LV} is not set:
+        set {ss::%uuid of player%.LV} to 1
+    if {ss::%uuid of player%.ExP} is not set:
+        set {ss::%uuid of player%.ExP} to 0
+    if {ss::%uuid of player%.Title} is not set:
+        set {ss::%uuid of player%.Title} to "" # No title by default
+    # Lifes, Kills, Deaths
+    if {ss::%uuid of player%.Lifes} is not set:
+        set {ss::%uuid of player%.Lifes} to 10
+    if {ss::%uuid of player%.Deaths} is not set:
+        set {ss::%uuid of player%.Deaths} to 0
+    if {ss::%uuid of player%.Kills} is not set:
+        set {ss::%uuid of player%.Kills} to 0
+    if {ss::%uuid of player%.KDR} is not set:
+        set {ss::%uuid of player%.KDR} to KDR({ss::%uuid of player%.Kills},{ss::%uuid of player%.Deaths})
+    if {ss::%uuid of player%.Souls} is not set:
+        set {ss::%uuid of player%.Souls} to 0
+    # Kill Record (List of UUIDs the user can shatter)
+    if {ss::%uuid of player%.KR} is not set:
+        set {ss::%uuid of player%.KR::*} to "null"
+    # Morality
+    if {ss::%uuid of player%.MP} is not set:
+        set {ss::%uuid of player%.MP} to 2
+    if {ss::%uuid of player%.Virtue} is not set:
+        set {ss::%uuid of player%.Virtue} to 0
+    if {ss::%uuid of player%.Sin} is not set:
+        set {ss::%uuid of player%.Sin} to 0
+    # Prestige
+    if {ss::%uuid of player%.Prestige} is not set:
+        set {ss::%uuid of player%.Prestige} to 0
+    # Death Record (For handeling non-player deaths)
+    if {ss::%uuid of player%::DR::UUID} is not set:
+        set {ss::%uuid of player%::DR::UUID} to "null"
+    if {ss::%uuid of player%::DR::Time} is not set:
+        set {ss::%uuid of player%::DR::Time} to unix timestamp of now
+    # The Abyss
+    if {ss::%uuid of player%::Abyss::Time} is not set:
+        set {ss::%uuid of player%::Abyss::Time} to unix timestamp of now # Until when is the Abyss Trap active.
+    if {ss::%uuid of player%::Abyss::Trap} is not set:
+        set {ss::%uuid of player%::Abyss::Trap} to 0 # 1 - Trapped, 0 - Not Trapped
+    if {ss::%uuid of player%::Abyss::Deaths} is not set:
+        set {ss::%uuid of player%::Abyss::Deaths} to 0 # How many times the player died and got trapped in the Abyss as a result of having no lifes left.
+    # On Join events
+    verifyLifes(player)
+
+# This event is responsible for saving the last damage caused by a player.
+# If a crystal death or arrow death happends, it doesn't store data as to who shot that item or used the crystal.
+# In that case, we give the kill to the last player who hit them within 1 minute.
+on damage of a player:
+    if {ss::%attacker%.UUID} is set:
+        set {ss::%uuid of victim%::DR::UUID} to uuid of attacker
+        set {ss::%uuid of victim%::DR::Time} to unix timestamp of now
+        stop
+    if Tmstmpdiff({ss::%uuid of victim%::DR::Time}) > 60:
+        set {ss::%uuid of victim%::DR::UUID} to "null"
+
+# This event checks how the player died, and executes either the deathBy function if they died to a player, or increases their deaths if they died to a mob.
+on death of player:
+    if {ss::%attacker%.UUID} isn't set:
+        if {ss::%uuid of victim%::DR::UUID} isn't "null":
+            # We were hit by a player within 1 minute.
+            give victim's skull to {ss::%{ss::%uuid of victim%::DR::UUID}%.Name} parsed as player
+            deathBy({ss::%uuid of victim%::DR::UUID}, uuid of victim)
+            set {ss::%uuid of victim%::DR::UUID} to "null"
+            stop
+        # We didn't die to a player, and weren't hit by one within 1 minute.
+        increase {ss::%uuid of victim%.Deaths} by 1 # Increase the victims deaths
+        set {ss::%uuid of victim%.KDR} to KDR({ss::%uuid of victim%.Kills}, {ss::%uuid of victim%.Deaths}) # Recalculate KDR of the victim
+    # We died to a player
+    give victim's skull to attacker
+    deathBy(uuid of attacker, uuid of victim)
+    set {ss::%uuid of victim%::DR::UUID} to "null"
+
+# !player entity death handeler
+on death:
+    if {ss::%victim%.UUID} is set:
+        # If the victim is a player -> Stop
+        stop
+    if {ss::%attacker%.UUID} isn't set:
+        # If the attacker isn't a player -> Stop
+        stop
+    if "%victim%" is "armor stand":
+        # If the victim is an armor stand -> Stop [Patched infinite ExP glitch]
+        stop
+    set {_expDrop} to mobExP({ss::%uuid of attacker%.LV}, {ss::%uuid of attacker%.KDR}, maximum health of victim)
+    increase {ss::%uuid of attacker%.ExP} by {_expDrop}
+    increase {ss::%uuid of attacker%.Kills} by 1
+    set {ss::%uuid of attacker%.KDR} to KDR({ss::%uuid of attacker%.Kills}, {ss::%uuid of attacker%.Deaths})
+    chkLV(uuid of attacker)
+    send "&0[&aS&2Souls&0] &eYou have killed &6%victim%&e and gained &6%{_expDrop}%&e ExP!" to attacker
+
+# Abyss World Escape Prevention Event
+on player world change:
+    if past event-world is "world_ssouls_the_abyss":
+        if {ss::%uuid of player%.Lifes} >= 1:
+            # We just check if they are alive right away, and if so, we update their gamemode to survival, since they might of have been in adventure.
+            set player's gamemode to survival
+        verifyAbyssTrap(player)
+        if {ss::%uuid of player%::Abyss::Trap} is 1:
+            send "&0[&aS&2Souls&0] &eYou cannot escape &6The Abyss&e this way!"
+
+# 
+#    ____                                          _     
+#   / ___|___  _ __ ___  _ __ ___   __ _ _ __   __| |___ 
+#  | |   / _ \| '_ ` _ \| '_ ` _ \ / _` | '_ \ / _` / __|
+#  | |__| (_) | | | | | | | | | | | (_| | | | | (_| \__ \
+#   \____\___/|_| |_| |_|_| |_| |_|\__,_|_| |_|\__,_|___/
+#                                                        
+# 
+
+# Main Command (Help Command)
+# TODO: ^^^
+command /ss:   
+    permission: shatteredsouls.command.player.help
+    aliases: /ss, /souls, /ssouls
+    trigger:
+        send "&0[&aS&2Souls&0] &6ss &e - &6Shows this list" to player
+        send "&0[&aS&2Souls&0] &6ss-shatter &e - &6Shatters a players soul if you killed them" to player
+        send "&0[&aS&2Souls&0] &6ss-spare &e - &6Spares a players soul if you killed them" to player
+        send "&0[&aS&2Souls&0] &6ss-stats &e - &6Shows yours or a specific players stats" to player
+        send "&0[&aS&2Souls&0] &6ss-prestige &e - &6Prestiges (Resets) if you are level 50" to player
+        send "&0[&aS&2Souls&0] &6ss-morality &e - &6Command for managing morality" to player
+        send "&0[&aS&2Souls&0] &6ss-resurrect &e - &6Resurrects a player who is trapped in the abyss" to player
+        send "&0[&aS&2Souls&0] &6ss-abyss &e - &6Command for managing your abyss trap status" to player
+        send "&0[&aS&2Souls&0] &eFor a list of admin commands, see the scripts documentation." to player
+
+command /ss-shatter <player>:
+    permission: shatteredsouls.command.player.shatter
+    aliases: /ss-shatter, /souls-shatter, /ssouls-shatter, /shatter
+    trigger:
+        shatter(uuid of player, uuid of args-1)
+
+command /ss-spare <player>:
+    permission: shatteredsouls.command.player.spare
+    aliases: /ss-spare, /souls-spare, /ssouls-spare, /spare, /shatternt
+    trigger:
+        spare(uuid of player, uuid of args-1)
+
+command /ss-stats [<player>]:
+    permission: shatteredsouls.command.player.stats
+    aliases: /ss-stats, /souls-stats, /ssouls-stats, /stats
+    trigger:
+        if args-1 is set:
+            set {_statstarget} to uuid of args-1
+        if args-1 isn't set:
+            set {_statstarget} to uuid of player
+        send "&0[&aS&2Souls&0] &eName: &6%{ss::%{_statstarget}%.Name}%" to player
+        send "&0[&aS&2Souls&0] &eLV: &6%{ss::%{_statstarget}%.LV}% &a⚝%{ss::%{_statstarget}%.Prestige}%" to player
+        set {_targetnextexp} to getExP({ss::%{_statstarget}%.LV}+1)-getExP({ss::%{_statstarget}%.LV})
+        set {_targetcurexp} to {ss::%{_statstarget}%.ExP}-getExP({ss::%{_statstarget}%.LV})
+        send "&0[&aS&2Souls&0] &eExP: &6%{_targetcurexp}%/%{_targetnextexp}%" to player
+        send "&0[&aS&2Souls&0] &eLifes: &6%{ss::%{_statstarget}%.Lifes}%" to player
+        send "&0[&aS&2Souls&0] &eKills: &6%{ss::%{_statstarget}%.Kills}%" to player
+        send "&0[&aS&2Souls&0] &eDeaths: &6%{ss::%{_statstarget}%.Deaths}%" to player
+        send "&0[&aS&2Souls&0] &eKDR: &6%{ss::%{_statstarget}%.KDR}%" to player
+        send "&0[&aS&2Souls&0] &eSouls: &6%{ss::%{_statstarget}%.Souls}%" to player
+        send "&0[&aS&2Souls&0] &eVirtue: &6%{ss::%{_statstarget}%.Virtue}%" to player
+        send "&0[&aS&2Souls&0] &eSin: &6%{ss::%{_statstarget}%.Sin}%" to player
+        send "&0[&aS&2Souls&0] &eMorality Knowledge: &6%{ss::%{_statstarget}%.MP}%" to player
+
+command /ss-prestige:
+    permission: shatteredsouls.command.player.prestige
+    aliases: /ss-prestige, /souls-prestige, /ssouls-prestige, /prestige
+    trigger:
+        prestige(uuid of player)
+
+command /ss-morality [<text>] [<num>]:
+    permission: shatteredsouls.command.player.morality
+    aliases: /ss-morality, /souls-morality, /ssouls-morality, /morality,  /ss-mortality, /souls-mortality, /ssouls-mortality, /mortality
+    trigger:
+        if args-1 isn't set:
+            set {_alignment} to getMoralityAlignment(uuid of player)
+            if {_alignment} is "sin": 
+                set {_points} to getMoralityPoints(uuid of player, "sin")
+                set {_tier} to getMoralityTier(uuid of player, "sin")
+                send "&0[&aS&2Souls&0] &4Sin &0[&c%{_tier}%&0] &8(&c%{_points}%&8)"
+                stop
+            if {_alignment} is "virtue": 
+                set {_points} to getMoralityPoints(uuid of player, "virtue")
+                set {_tier} to getMoralityTier(uuid of player, "virtue")
+                send "&0[&aS&2Souls&0] &fVirtue &0[&7%{_tier}%&0] &8(&7%{_points}%&8)"
+                stop
+            if {_alignment} is "neutral": 
+                set {_points} to getMoralityPoints(uuid of player, "neutral")
+                set {_tier} to getMoralityTier(uuid of player, "neutral")
+                send "&0[&aS&2Souls&0] &7Neutral &0[&f%{_tier}%&0] &8(&f%{_points}%&8)"
+                stop
+            stop
+        if args-2 is set:
+            if args-1 is "sin":
+                addMoralityPoints(player, "sin", args-2)
+                stop
+            if args-1 is "virtue":
+                addMoralityPoints(player, "virtue", args-2)
+                stop
+        if args-1 is "sin":
+            set {_points} to getMoralityPoints(uuid of player, "sin")
+            set {_tier} to getMoralityTier(uuid of player, "sin")
+            send "&0[&aS&2Souls&0] &4Sin &0[&c%{_tier}%&0] &8(&c%{_points}%&8)"
+            stop
+        if args-1 is "virtue":
+            set {_points} to getMoralityPoints(uuid of player, "virtue")
+            set {_tier} to getMoralityTier(uuid of player, "virtue")
+            send "&0[&aS&2Souls&0] &fVirtue &0[&7%{_tier}%&0] &8(&7%{_points}%&8)"
+            stop
+            stop
+        if args-1 is "neutral":
+            set {_points} to getMoralityPoints(uuid of player, "neutral")
+            set {_tier} to getMoralityTier(uuid of player, "neutral")
+            send "&0[&aS&2Souls&0] &7Neutral &0[&f%{_tier}%&0] &8(&f%{_points}%&8)"
+            stop
+        if {ss::%args-1%.UUID} is set:
+            set {_alignment} to getMoralityAlignment(uuid of args-1 parsed as player)
+            if {_alignment} is "sin": 
+                set {_points} to getMoralityPoints(uuid of args-1 parsed as player, "sin")
+                set {_tier} to getMoralityTier(uuid of args-1 parsed as player, "sin")
+                send "&0[&aS&2Souls&0] &4Sin &0[&c%{_tier}%&0] &8(&c%{_points}%&8)"
+                stop
+            if {_alignment} is "virtue": 
+                set {_points} to getMoralityPoints(uuid of args-1 parsed as player, "virtue")
+                set {_tier} to getMoralityTier(uuid of args-1 parsed as player, "virtue")
+                send "&0[&aS&2Souls&0] &fVirtue &0[&7%{_tier}%&0] &8(&7%{_points}%&8)"
+                stop
+            if {_alignment} is "neutral": 
+                set {_points} to getMoralityPoints(uuid of args-1 parsed as player, "neutral")
+                set {_tier} to getMoralityTier(uuid of args-1 parsed as player, "neutral")
+                send "&0[&aS&2Souls&0] &7Neutral &0[&f%{_tier}%&0] &8(&f%{_points}%&8)"
+                stop
+            stop
+
+command /ss-resurrect <player>:
+    permission: shatteredsouls.command.player.resurrect
+    aliases: /ss-resurrect, /souls-resurrect, /ssouls-resurrect, /resurrect
+    trigger:
+        resurrect(player, args-1)
+
+command /ss-abyss [<text>]:
+    permission: shatteredsouls.command.player.abyss
+    aliases: /ss-abyss, /souls-abyss, /ssouls-abyss, /abyss
+    trigger:
+        checkTimeAbyssTrap(uuid of player)
+        if args-1 is set:
+            if {ss::%uuid of player%::Abyss::Trap} is 0:
+                if player is in world "world_ssouls_the_abyss":
+                    teleport player to location at 0, 321, 0 of world "world" 
+                    apply potion of resistance of tier 5 to player for 15 seconds
+                    set player's gamemode to survival
+                    send "&0[&aS&2Souls&0] &eYou have escaped the abyss, and awakened into the real world." to player
+                    stop
+                send "&0[&aS&2Souls&0] &eYou are not abyss trapped!" to player
+                stop
+            send "&0[&aS&2Souls&0] &eYour soul is beying hold onto by the darkness." to player
+            stop
+        if {ss::%uuid of player%::Abyss::Trap} is 1:
+            send "&0[&aS&2Souls&0] &eYou are abyss trapped for &6%{ss::%uuid of player%::Abyss::Time} - unix timestamp of now%&e seconds!" to player
+            send formatted "&0[&aS&2Souls&0] <tooltip:&7Status: &cLocked>&d<< Awaken >>" to player
+            stop
+        if player isn't in world "world_ssouls_the_abyss":
+            send "&0[&aS&2Souls&0] &eYou are not abyss trapped!" to player
+            stop
+        send "&0[&aS&2Souls&0] &eYou are not abyss trapped!" to player
+        send formatted "&0[&aS&2Souls&0] <cmd:/ss-abyss free><tooltip:&7Status: &aUnlocked>&5<< Awaken >>" to player
+
+# ---- Admin Commands ----
+
+command /ss-admin-reset <player>:
+    permission: shatteredsouls.command.admin.reset
+    aliases: /ss-admin-reset, /souls-admin-reset, /ssouls-admin-reset, /admin-reset
+    trigger:
+        kick args-1
+        set {ss::%args-1%.UUID} to uuid of args-1
+        set {ss::%uuid of args-1%.Name} to name of args-1
+        set {ss::%uuid of args-1%.LV} to 1
+        set {ss::%uuid of args-1%.ExP} to 0
+        set {ss::%uuid of args-1%.Title} to ""
+        set {ss::%uuid of args-1%.Lifes} to 10
+        set {ss::%uuid of args-1%.Deaths} to 0
+        set {ss::%uuid of args-1%.Kills} to 0
+        set {ss::%uuid of args-1%.KDR} to KDR({ss::%uuid of args-1%.Kills},{ss::%uuid of args-1%.Deaths})
+        set {ss::%uuid of args-1%.Souls} to 0
+        set {ss::%uuid of args-1%.KR::*} to "null"
+        set {ss::%uuid of args-1%.MP} to 2
+        set {ss::%uuid of args-1%.Virtue} to 0
+        set {ss::%uuid of args-1%.Sin} to 0
+        set {ss::%uuid of args-1%.Prestige} to 0
+        set {ss::%uuid of args-1%::DR::UUID} to "null"
+        set {ss::%uuid of args-1%::DR::Time} to unix timestamp of now
+        set {ss::%uuid of args-1%::Abyss::Time} to unix timestamp of now
+        set {ss::%uuid of args-1%::Abyss::Trap} to 0
+        set {ss::%uuid of args-1%::Abyss::Deaths} to 0
+        send "&0[&cS&4Souls&0] &eAll ShatteredSouls data for &6%args-1%&e has been reset!"
+
+command /ss-admin-exp <player> <text> [<num>]:
+    permission: shatteredsouls.command.admin.exp
+    aliases: /ss-admin-exp, /souls-admin-exp, /ssouls-admin-exp, /admin-exp
+    trigger:
+        if args-2 is "get":
+            send "&0[&cS&4Souls&0] &6%args-1%'s&e ExP is &6%{ss::%uuid of args-1%.ExP}%&e!"
+            stop
+        if args-3 isn't set:
+            send "&0[&cS&4Souls&0] &eYou must specify how much!"
+            stop
+        if args-2 is "take":
+            reduce {ss::%uuid of args-1%.ExP} by args-3
+            send "&0[&cS&4Souls&0] &eDecreased &6%args-1%'s&e ExP by &6%args-3%&e!"
+            chkLV(uuid of args-1)
+            stop
+        if args-2 is "set":
+            set {ss::%uuid of args-1%.ExP} to args-3
+            send "&0[&cS&4Souls&0] &eSet &6%args-1%'s&e ExP to &6%args-3%&e!"
+            chkLV(uuid of args-1)
+            stop
+        if args-2 is "give":
+            increase {ss::%uuid of args-1%.ExP} by args-3
+            send "&0[&cS&4Souls&0] &eIncreased &6%args-1%'s&e ExP by &6%args-3%&e!"
+            chkLV(uuid of args-1)
+            stop
+        send "&0[&cS&4Souls&0] &eUnknown operation &6%args-2%&e!"
+
+command /ss-admin-love <player> <text> [<num>]:
+    permission: shatteredsouls.command.admin.love
+    aliases: /ss-admin-love, /souls-admin-love, /ssouls-admin-love, /admin-love
+    trigger:
+        if args-2 is "get":
+            send "&0[&cS&4Souls&0] &6%args-1%'s&e LV is &6%{ss::%uuid of args-1%.LV}%&e!"
+            stop
+        if args-3 isn't set:
+            send "&0[&cS&4Souls&0] &eYou must specify how much!"
+            stop
+        if args-2 is "take":
+            reduce {ss::%uuid of args-1%.LV} by args-3
+            reduce {ss::%uuid of args-1%.MP} by args-3 * 2
+            send "&0[&cS&4Souls&0] &eDecreased &6%args-1%'s&e LV by &6%args-3%&e!"
+            stop
+        if args-2 is "set":
+            set {ss::%uuid of args-1%.LV} to args-3
+            set {ss::%uuid of args-1%.MP} to args-3 * 2
+            send "&0[&cS&4Souls&0] &eSet &6%args-1%'s&e LV to &6%args-3%&e!"
+            send "&0[&cS&4Souls&0] &ePlease note that their MoralityPoints might have been overwritten!"
+            stop
+        if args-2 is "give":
+            increase {ss::%uuid of args-1%.LV} by args-3
+            increase {ss::%uuid of args-1%.MP} by args-3 * 2
+            send "&0[&cS&4Souls&0] &eIncreased &6%args-1%'s&e LV by &6%args-3%&e!"
+            stop
+        send "&0[&cS&4Souls&0] &eUnknown operation &6%args-2%&e!"
+
+command /ss-admin-lifes <player> <text> [<num>]:
+    permission: shatteredsouls.command.admin.lifes
+    aliases: /ss-admin-lifes, /souls-admin-lifes, /ssouls-admin-lifes, /admin-lifes
+    trigger:
+        if args-2 is "get":
+            send "&0[&cS&4Souls&0] &6%args-1%&e has &6%{ss::%uuid of args-1%.Lifes}%&e lifes!"
+            stop
+        if args-3 isn't set:
+            send "&0[&cS&4Souls&0] &eYou must specify how much!"
+            stop
+        if args-2 is "take":
+            reduce {ss::%uuid of args-1%.Lifes} by args-3
+            send "&0[&cS&4Souls&0] &eDecreased &6%args-1%'s&e lifes by &6%args-3%&e!"
+            stop
+        if args-2 is "set":
+            set {ss::%uuid of args-1%.Lifes} to args-3
+            send "&0[&cS&4Souls&0] &eSet &6%args-1%'s&e lifes to &6%args-3%&e!"
+            stop
+        if args-2 is "give":
+            increase {ss::%uuid of args-1%.Lifes} by args-3
+            send "&0[&cS&4Souls&0] &eIncreased &6%args-1%'s&e lifes by &6%args-3%&e!"
+            stop
+        send "&0[&cS&4Souls&0] &eUnknown operation &6%args-2%&e!"
+
+command /ss-admin-deaths <player> <text> [<num>]:
+    permission: shatteredsouls.command.admin.deaths
+    aliases: /ss-admin-deaths, /souls-admin-deaths, /ssouls-admin-deaths, /admin-deaths
+    trigger:
+        if args-2 is "get":
+            send "&0[&cS&4Souls&0] &6%args-1%&e has &6%{ss::%uuid of args-1%.Deaths}%&e deaths!"
+            stop
+        if args-3 isn't set:
+            send "&0[&cS&4Souls&0] &eYou must specify how much!"
+            stop
+        if args-2 is "take":
+            reduce {ss::%uuid of args-1%.Deaths} by args-3
+            send "&0[&cS&4Souls&0] &eDecreased &6%args-1%'s&e deaths by &6%args-3%&e!"
+            stop
+        if args-2 is "set":
+            set {ss::%uuid of args-1%.Deaths} to args-3
+            send "&0[&cS&4Souls&0] &eSet &6%args-1%'s&e deaths to &6%args-3%&e!"
+            stop
+        if args-2 is "give":
+            increase {ss::%uuid of args-1%.Deaths} by args-3
+            send "&0[&cS&4Souls&0] &eIncreased &6%args-1%'s&e deaths by &6%args-3%&e!"
+            stop
+        send "&0[&cS&4Souls&0] &eUnknown operation &6%args-2%&e!"
+
+command /ss-admin-kills <player> <text> [<num>]:
+    permission: shatteredsouls.command.admin.kills
+    aliases: /ss-admin-kills, /souls-admin-kills, /ssouls-admin-kills, /admin-kills
+    trigger:
+        if args-2 is "get":
+            send "&0[&cS&4Souls&0] &6%args-1%&e has &6%{ss::%uuid of args-1%.Kills}%&e kills!"
+            stop
+        if args-3 isn't set:
+            send "&0[&cS&4Souls&0] &eYou must specify how much!"
+            stop
+        if args-2 is "take":
+            reduce {ss::%uuid of args-1%.Kills} by args-3
+            send "&0[&cS&4Souls&0] &eDecreased &6%args-1%'s&e Kills by &6%args-3%&e!"
+            stop
+        if args-2 is "set":
+            set {ss::%uuid of args-1%.Kills} to args-3
+            send "&0[&cS&4Souls&0] &eSet &6%args-1%'s&e Kills to &6%args-3%&e!"
+            stop
+        if args-2 is "give":
+            increase {ss::%uuid of args-1%.Kills} by args-3
+            send "&0[&cS&4Souls&0] &eIncreased &6%args-1%'s&e Kills by &6%args-3%&e!"
+            stop
+        send "&0[&cS&4Souls&0] &eUnknown operation &6%args-2%&e!"
+
+command /ss-admin-kdr <player> <text> [<num>]:
+    permission: shatteredsouls.command.admin.kdr
+    aliases: /ss-admin-kdr, /souls-admin-kdr, /ssouls-admin-kdr, /admin-kdr
+    trigger:
+        if args-2 is "get":
+            send "&0[&cS&4Souls&0] &6%args-1%'s&e KDR is &6%{ss::%uuid of args-1%.KDR}%&e!"
+            stop
+        if args-3 isn't set:
+            send "&0[&cS&4Souls&0] &eYou must specify how much!"
+            stop
+        if args-2 is "take":
+            if {ss::%uuid of args-1%.Deaths} is 0:
+                reduce {ss::%uuid of args-1%.Kills} by args-3
+            if {ss::%uuid of args-1%.Deaths} isn't 0:
+                reduce {ss::%uuid of args-1%.Kills} by {ss::%uuid of args-1%.Deaths} * args-3
+            set {ss::%uuid of args-1%.KDR} to KDR({ss::%uuid of args-1%.Kills}, {ss::%uuid of args-1%.Deaths}) 
+            send "&0[&cS&4Souls&0] &eDecreased &6%args-1%'s&e KDR by &6%args-3%&e!"
+            stop
+        if args-2 is "set":
+            if {ss::%uuid of args-1%.Deaths} is 0:
+                set {ss::%uuid of args-1%.Kills} to args-3
+            if {ss::%uuid of args-1%.Deaths} isn't 0:
+                set {ss::%uuid of args-1%.Kills} to {ss::%uuid of args-1%.Deaths} * args-3
+            set {ss::%uuid of args-1%.KDR} to KDR({ss::%uuid of args-1%.Kills}, {ss::%uuid of args-1%.Deaths})
+            send "&0[&cS&4Souls&0] &eSet &6%args-1%'s&e KDR to &6%args-3%&e!"
+            stop
+        if args-2 is "give":
+            if {ss::%uuid of args-1%.Deaths} is 0:
+                increase {ss::%uuid of args-1%.Kills} by args-3
+            if {ss::%uuid of args-1%.Deaths} isn't 0:
+                increase {ss::%uuid of args-1%.Kills} by {ss::%uuid of args-1%.Deaths} * args-3
+            set {ss::%uuid of args-1%.KDR} to KDR({ss::%uuid of args-1%.Kills}, {ss::%uuid of args-1%.Deaths}) 
+            send "&0[&cS&4Souls&0] &eIncreased &6%args-1%'s&e KDR by &6%args-3%&e!"
+            stop
+        send "&0[&cS&4Souls&0] &eUnknown operation &6%args-2%&e!"
+
+command /ss-admin-souls <player> <text> [<num>]:
+    permission: shatteredsouls.command.admin.souls
+    aliases: /ss-admin-souls, /souls-admin-souls, /ssouls-admin-souls, /admin-souls
+    trigger:
+        if args-2 is "get":
+            send "&0[&cS&4Souls&0] &6%args-1%&e has &6%{ss::%uuid of args-1%.Souls}%&e souls!"
+            stop
+        if args-3 isn't set:
+            send "&0[&cS&4Souls&0] &eYou must specify how much!"
+            stop
+        if args-2 is "take":
+            reduce {ss::%uuid of args-1%.Souls} by args-3
+            send "&0[&cS&4Souls&0] &eDecreased &6%args-1%'s&e Souls by &6%args-3%&e!"
+            stop
+        if args-2 is "set":
+            set {ss::%uuid of args-1%.Souls} to args-3
+            send "&0[&cS&4Souls&0] &eSet &6%args-1%'s&e Souls to &6%args-3%&e!"
+            stop
+        if args-2 is "give":
+            increase {ss::%uuid of args-1%.Souls} by args-3
+            send "&0[&cS&4Souls&0] &eIncreased &6%args-1%'s&e Souls by &6%args-3%&e!"
+            stop
+        send "&0[&cS&4Souls&0] &eUnknown operation &6%args-2%&e!"
+
+command /ss-admin-kr <player> <text> [<player>]:
+    permission: shatteredsouls.command.admin.killrecord
+    aliases: /ss-admin-kr, /souls-admin-kr, /ssouls-admin-kr, /admin-kr
+    trigger:
+        if args-2 is "get":
+            send "&0[&cS&4Souls&0] &6%args-1%'s&e KillRecord:"
+            loop {ss::%uuid of args-1%.KR::*}:
+                send "&0[&cS&4Souls&0] &e- &6%{ss::%loop-value%.Name}%"
+            stop
+        if args-2 is "clear":
+            clear {ss::%uuid of args-1%.KR::*}
+            send "&0[&cS&4Souls&0] &eCleared &6%args-3%'s&e Kill Record!"
+            stop
+        if args-3 isn't set:
+            send "&0[&cS&4Souls&0] &eYou must specify a player!"
+            stop
+        if args-2 is "add":
+            add uuid of args-3 to {ss::%uuid of args-1%.KR::*}
+            send "&0[&cS&4Souls&0] &eAdded &6%args-3%&e to &6%args-1%'s&e Kill Record!"
+            stop
+        if args-2 is "remove":
+            remove uuid of args-3 from {ss::%uuid of args-1%.KR::*}
+            send "&0[&cS&4Souls&0] &eRemoved &6%args-3%&e from &6%args-1%'s&e Kill Record!"
+            stop
+        send "&0[&cS&4Souls&0] &eUnknown operation &6%args-2%&e!"
+
+command /ss-admin-prestige <player> <text> [<num>]:
+    permission: shatteredsouls.command.admin.prestige
+    aliases: /ss-admin-prestige, /souls-admin-prestige, /ssouls-admin-prestige, /admin-prestige
+    trigger:
+        if args-2 is "get":
+            send "&0[&cS&4Souls&0] &6%args-1%'s&e Prestiged &6%{ss::%uuid of args-1%.Prestige}%&e times!"
+            stop
+        if args-3 isn't set:
+            send "&0[&cS&4Souls&0] &eYou must specify how much!"
+            stop
+        if args-2 is "take":
+            reduce {ss::%uuid of args-1%.Prestige} by args-3
+            reduce {ss::%uuid of args-1%.MP} by 100 * args-3
+            send "&0[&cS&4Souls&0] &eDecreased &6%args-1%'s&e Prestiges by &6%args-3%&e!"
+            stop
+        if args-2 is "set":
+            set {ss::%uuid of args-1%.Prestige} to args-3
+            set {ss::%uuid of args-1%.MP} to args-3 * 100
+            send "&0[&cS&4Souls&0] &eSet &6%args-1%'s&e Prestiges to &6%args-3%&e!"
+            send "&0[&cS&4Souls&0] &ePlease note that their MoralityPoints might have been overwritten!"
+            stop
+        if args-2 is "give":
+            loop args-3 times:
+                increase {ss::%uuid of args-1%.LV} by 50
+                increase {ss::%uuid of args-1%.MP} by 100
+                prestige(uuid of args-1)
+            send "&0[&cS&4Souls&0] &eIncreased &6%args-1%'s&e Prestiges by &6%args-3%&e!"
+            stop
+        send "&0[&cS&4Souls&0] &eUnknown operation &6%args-2%&e!"
+
+# TODO:
+command /ss-admin-morality <player> <text> <text> <text> [<num>]:
+    permission: shatteredsouls.command.admin.morality
+    aliases: /ss-admin-morality, /souls-admin-morality, /ssouls-admin-morality, /admin-morality
+    trigger:
+        if args-2 is "get":
+            send "&0[&cS&4Souls&0] &6%args-1%'s&e LV is &6%{ss::%uuid of args-1%.LV}%&e!"
+            stop
+        if args-3 isn't set:
+            send "&0[&cS&4Souls&0] &eYou must specify how much!"
+            stop
+        if args-2 is "take":
+            reduce {ss::%uuid of args-1%.LV} by args-3
+            send "&0[&cS&4Souls&0] &eDecreased &6%args-1%'s&e LV by &6%args-3%&e!"
+            stop
+        if args-2 is "set":
+            set {ss::%uuid of args-1%.LV} to args-3
+            send "&0[&cS&4Souls&0] &eSet &6%args-1%'s&e LV to &6%args-3%&e!"
+            stop
+        if args-2 is "give":
+            increase {ss::%uuid of args-1%.LV} by args-3
+            send "&0[&cS&4Souls&0] &eIncreased &6%args-1%'s&e LV by &6%args-3%&e!"
+            stop
+        send "&0[&cS&4Souls&0] &eUnknown operation &6%args-2%&e!"
+
+# TODO:
+command /ss-admin-moralityp <player> <text> [<num>]:
+    permission: shatteredsouls.command.admin.moralitypoints
+    aliases: /ss-admin-moralityp, /souls-admin-moralityp, /ssouls-admin-moralityp, /admin-moralityp
+    trigger:
+        if args-2 is "get":
+            send "&0[&cS&4Souls&0] &6%args-1%'s&e LV is &6%{ss::%uuid of args-1%.LV}%&e!"
+            stop
+        if args-3 isn't set:
+            send "&0[&cS&4Souls&0] &eYou must specify how much!"
+            stop
+        if args-2 is "take":
+            reduce {ss::%uuid of args-1%.LV} by args-3
+            send "&0[&cS&4Souls&0] &eDecreased &6%args-1%'s&e LV by &6%args-3%&e!"
+            stop
+        if args-2 is "set":
+            set {ss::%uuid of args-1%.LV} to args-3
+            send "&0[&cS&4Souls&0] &eSet &6%args-1%'s&e LV to &6%args-3%&e!"
+            stop
+        if args-2 is "give":
+            increase {ss::%uuid of args-1%.LV} by args-3
+            send "&0[&cS&4Souls&0] &eIncreased &6%args-1%'s&e LV by &6%args-3%&e!"
+            stop
+        send "&0[&cS&4Souls&0] &eUnknown operation &6%args-2%&e!"
+
+command /ss-admin-abyss <player> <text> [<num>]:
+    permission: shatteredsouls.command.admin.abyss
+    aliases: /ss-admin-abyss, /souls-admin-abyss, /ssouls-admin-abyss, /admin-abyss
+    trigger:
+        if args-2 is "status":
+            checkTimeAbyssTrap(uuid of args-1) # We update the abyss trap status
+            if {ss::%uuid of args-1%::Abyss::Trap} is 1:
+                send "&0[&cS&4Souls&0] &6%args-1%&e is abyss trapped until &6%{ss::%uuid of args-1%::Abyss::Time}%&e!"
+                stop
+            send "&0[&cS&4Souls&0] &6%args-1%&e isn't abyss trapped!"
+            stop
+        if args-2 is "free":
+            set {ss::%uuid of args-1%::Abyss::Time} to unix timestamp of now - 1
+            verifyAbyssTrap(args-1)
+            send "&0[&cS&4Souls&0] &eFreed &6%args-1%&e from the Abyss!"
+            stop
+        if args-3 isn't set:
+            send "&0[&cS&4Souls&0] &eYou must specify how long (in seconds)!"
+            stop
+        if args-2 is "trap":
+            set {ss::%uuid of args-1%::Abyss::Time} to unix timestamp of now + args-3
+            verifyAbyssTrap(args-1)
+            send "&0[&cS&4Souls&0] &eTrapped &6%args-1%&e in the Abyss for &6%args-3%&e seconds!"
+            stop
+        send "&0[&cS&4Souls&0] &eUnknown operation &6%args-2%&e!"
+
+command /ss-admin-adeaths <player> <text> [<num>]:
+    permission: shatteredsouls.command.admin.abyssdeaths
+    aliases: /ss-admin-adeaths, /souls-admin-adeaths, /ssouls-admin-adeaths, /admin-adeaths
+    trigger:
+        if args-2 is "get":
+            send "&0[&cS&4Souls&0] &6%args-1%&e has &6%{ss::%uuid of args-1%::Abyss::Deaths}%&e abyssial deaths!"
+            stop
+        if args-3 isn't set:
+            send "&0[&cS&4Souls&0] &eYou must specify how much!"
+            stop
+        if args-2 is "take":
+            reduce {ss::%uuid of args-1%::Abyss::Deaths} by args-3
+            send "&0[&cS&4Souls&0] &eDecreased &6%args-1%'s&e Abyss Deaths by &6%args-3%&e!"
+            stop
+        if args-2 is "set":
+            set {ss::%uuid of args-1%::Abyss::Deaths} to args-3
+            send "&0[&cS&4Souls&0] &eSet &6%args-1%'s&e Abyss Deaths to &6%args-3%&e!"
+            stop
+        if args-2 is "give":
+            increase {ss::%uuid of args-1%::Abyss::Deaths} by args-3
+            send "&0[&cS&4Souls&0] &eIncreased &6%args-1%'s&e Abyss Deaths by &6%args-3%&e!"
+            stop
+        send "&0[&cS&4Souls&0] &eUnknown operation &6%args-2%&e!"
+
+# 
+#      _    _     _ _ _ _   _           
+#     / \  | |__ (_) (_) |_(_) ___  ___ 
+#    / _ \ | '_ \| | | | __| |/ _ \/ __|
+#   / ___ \| |_) | | | | |_| |  __/\__ \
+#  /_/   \_\_.__/|_|_|_|\__|_|\___||___/
+#                                       
+# 
+
+# -- Ability Functions --
+
+# -- Ability Commands --
