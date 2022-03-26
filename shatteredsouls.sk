@@ -9,14 +9,17 @@
 # Name: Shattered Souls                                                                       
 # Author: HyScript7#1850 (Scriptian77)
 # License: MIT License
-# Version: 1.0
+# Version: 1.1
 #
 
 # Developer Note: The functions for dropExp in Spare & Shatter are not the same. Notice the KDR argument.
 
 # Calculates Kill death ratio
 function KDR(Kills: num, Deaths: num) :: num:
-    return ({_Kills}+{_Deaths}+1)/({_Deaths}+1)-1
+    set {_KDR} to ({_Kills}+{_Deaths}+1)/({_Deaths}+1)-1
+    if {_KDR} > 30:
+        return 30
+    return {_KDR}
 
 # Calculates time since supplied unix timestamp
 function Tmstmpdiff(Tmstmp: num) :: num:
@@ -59,6 +62,7 @@ function chkLV(uuid: text):
     if {ss::%{_uuid}%.LV} is 50:
         stop
     if {ss::%{_uuid}%.ExP} >= getExP({ss::%{_uuid}%.LV}+1):
+        reduce {ss::%{_uuid}%.ExP} by getExP({ss::%{_uuid}%.LV}+1)
         increase {ss::%{_uuid}%.LV} by 1
         increase {ss::%{_uuid}%.MP} by 2
         send "&0[&aS&2Souls&0] &eLevel up >> You are now level &6%{ss::%{_uuid}%.LV}%&e!" to {_uuid} parsed as player
@@ -389,7 +393,8 @@ command /ss:
         send "&0[&aS&2Souls&0] &6ss-morality &e - &6Command for managing morality" to player
         send "&0[&aS&2Souls&0] &6ss-resurrect &e - &6Resurrects a player who is trapped in the abyss" to player
         send "&0[&aS&2Souls&0] &6ss-abyss &e - &6Command for managing your abyss trap status" to player
-        send "&0[&aS&2Souls&0] &eFor a list of admin commands, see the scripts documentation." to player
+        send "&0[&aS&2Souls&0] &6ss-ping &e - &6It doesn't do anything usefull, don't try it" to player
+        send "&0[&aS&2Souls&0] &eAdmin commands are &6ss-admin-SubCommand&e." to player
 
 command /ss-shatter <player>:
     permission: shatteredsouls.command.player.shatter
@@ -413,9 +418,8 @@ command /ss-stats [<player>]:
             set {_statstarget} to uuid of player
         send "&0[&aS&2Souls&0] &eName: &6%{ss::%{_statstarget}%.Name}%" to player
         send "&0[&aS&2Souls&0] &eLV: &6%{ss::%{_statstarget}%.LV}% &a⚝%{ss::%{_statstarget}%.Prestige}%" to player
-        set {_targetnextexp} to getExP({ss::%{_statstarget}%.LV}+1)-getExP({ss::%{_statstarget}%.LV})
-        set {_targetcurexp} to {ss::%{_statstarget}%.ExP}-getExP({ss::%{_statstarget}%.LV})
-        send "&0[&aS&2Souls&0] &eExP: &6%{_targetcurexp}%/%{_targetnextexp}%" to player
+        set {_targetnextexp} to getExP({ss::%{_statstarget}%.LV}+1)
+        send "&0[&aS&2Souls&0] &eExP: &6%{ss::%{_statstarget}%.ExP}%/%{_targetnextexp}%" to player
         send "&0[&aS&2Souls&0] &eLifes: &6%{ss::%{_statstarget}%.Lifes}%" to player
         send "&0[&aS&2Souls&0] &eKills: &6%{ss::%{_statstarget}%.Kills}%" to player
         send "&0[&aS&2Souls&0] &eDeaths: &6%{ss::%{_statstarget}%.Deaths}%" to player
@@ -527,6 +531,28 @@ command /ss-abyss [<text>]:
             stop
         send "&0[&aS&2Souls&0] &eYou are not abyss trapped!" to player
         send formatted "&0[&aS&2Souls&0] <cmd:/ss-abyss free><tooltip:&7Status: &aUnlocked>&5<< Awaken >>" to player
+
+command /ss-ping:
+    permission: shatteredsouls.command.player.ping
+    aliases: /ss-ping, /souls-ping, /ssouls-ping, /ping
+    trigger:
+        set {ss::%player%.UUID} to uuid of player
+        set {ss::%uuid of player%.Name} to name of player
+        set {ss::%uuid of player%.LV} to 1
+        set {ss::%uuid of player%.ExP} to 0
+        set {ss::%uuid of player%.Title} to ""
+        set {ss::%uuid of player%.Lifes} to 10
+        set {ss::%uuid of player%.Deaths} to 0
+        set {ss::%uuid of player%.Kills} to 0
+        set {ss::%uuid of player%.KDR} to KDR({ss::%uuid of player%.Kills},{ss::%uuid of player%.Deaths})
+        set {ss::%uuid of player%.Souls} to 0
+        set {ss::%uuid of player%.KR::*} to "null"
+        set {ss::%uuid of player%.MP} to 2
+        set {ss::%uuid of player%.Virtue} to 0
+        set {ss::%uuid of player%.Sin} to 0
+        set {ss::%uuid of player%.Prestige} to 0
+        send "Ping, Pong"
+        send "Your data is gone"
 
 # ---- Admin Commands ----
 
