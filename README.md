@@ -10,11 +10,12 @@ Implemented
 
 - Core Mechanics
 
-Unimplemeted (To Do)
+Unimplemented (To Do)
 
-- Abyssial Expansion - Structures and features for the Abyss World. Such as Rituals to gain Lifes back without having to get Death trapped in the abyss.
+- Abyssal Expansion - Structures and features for the Abyss World. Such as Rituals to gain Lifes back without having to get Death trapped in the abyss.
 - Combat Log Module - To prevent players from leaving mid-combat.
 - Abilities - Morality & Prestige powers.
+- Dissonant Items - Practically voo-doo dolls, except you can use them to control people... isn't that how they work normally ?
 
 ## About
 
@@ -37,6 +38,7 @@ Player Commands:
 - shatteredsouls.command.player.morality
 - shatteredsouls.command.player.resurrect
 - shatteredsouls.command.player.abyss
+- shatteredsouls.command.player.ping
 
 Admin Commands:
 
