@@ -52,7 +52,7 @@ Admin Commands:
 - shatteredsouls.command.admin.souls
 - shatteredsouls.command.admin.killrecord
 - shatteredsouls.command.admin.prestige
-- shatteredsouls.command.admin.morality (NOT IMPLEMENTED)
-- shatteredsouls.command.admin.moralitypoints (NOT IMPLEMENTED)
+- shatteredsouls.command.admin.morality
+- shatteredsouls.command.admin.moralitypoints
 - shatteredsouls.command.admin.abyss
 - shatteredsouls.command.admin.abyssdeaths
