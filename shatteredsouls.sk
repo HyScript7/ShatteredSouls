@@ -9,10 +9,12 @@
 # Name: Shattered Souls                                                                       
 # Author: HyScript7#1850 (Scriptian77)
 # License: MIT License
-# Version: 1.1
+# Version: 2.0
 #
 
 # Developer Note: The functions for dropExp in Spare & Shatter are not the same. Notice the KDR argument.
+
+# ! Dissonant Items were put on hold, because I accidentely introduced a dupe exploit by adding them. Still looking for an easy way to implement them.
 
 # Calculates Kill death ratio
 function KDR(Kills: num, Deaths: num) :: num:
@@ -45,6 +47,8 @@ function deathBy(attacker: text, victim: text):
     set {ss::%{_victim}%.KDR} to KDR({ss::%uuid of {_victim}%.Kills}, {ss::%uuid of {_victim}%.Deaths})
     verifyLifes({ss::%{_victim}%.Name} parsed as player)
     verifyLifes({ss::%{_attacker}%.Name} parsed as player)
+    chkLV({_attacker})
+    chkLV({_victim})
     # Send messages
     send "&0[&aS&2Souls&0] &eYou have killed &6%{_victimname}%&e!" to {_attackername} parsed as player
     send formatted "&0[&aS&2Souls&0] <cmd:/ss-shatter %{_victimname}%><tooltip:&7Click to shatter their soul>&c<<Shatter>> <cmd:/ss-spare %{_victimname}%><tooltip:&7Click to spare their soul>&a<<Spare>>" to {_attackername} parsed as player
@@ -64,7 +68,7 @@ function chkLV(uuid: text):
     if {ss::%{_uuid}%.ExP} >= getExP({ss::%{_uuid}%.LV}+1):
         reduce {ss::%{_uuid}%.ExP} by getExP({ss::%{_uuid}%.LV}+1)
         increase {ss::%{_uuid}%.LV} by 1
-        increase {ss::%{_uuid}%.MP} by 2
+        increase {ss::%{_uuid}%.Knowledge} by 2
         send "&0[&aS&2Souls&0] &eLevel up >> You are now level &6%{ss::%{_uuid}%.LV}%&e!" to {_uuid} parsed as player
         chkLV({_uuid})
     stop
@@ -82,7 +86,7 @@ function prestige(uuid: text):
     set {ss::%{_uuid}%.Deaths} to round({ss::%{_uuid}%.Deaths} / 100 * 15)
     set {ss::%{_uuid}%.Kills} to round({ss::%{_uuid}%.Kills} / 100 * 15)
     increase {ss::%{_uuid}%.Prestige} by 1
-    increase {ss::%{_uuid}%.MP} by 2
+    increase {ss::%{_uuid}%.Knowledge} by 2
     increase {ss::%{_uuid}%.Souls} by round({ss::%{_uuid}%.Souls}/100*15)
     remove all objects from {ss::%{_uuid}%::DR::*}
     set {ss::%{_uuid}%::KR::*} to "null"
@@ -189,8 +193,8 @@ function getMoralityPoints(player: text, morality: text) :: num:
         return {ss::%{_player}%.Virtue}
 
 function addMoralityPoints(player: player, morality: text, points: num):
-    if {ss::%uuid of {_player}%.MP} >= {_points}:
-        reduce {ss::%uuid of {_player}%.MP} by {_points}
+    if {ss::%uuid of {_player}%.Knowledge} >= {_points}:
+        reduce {ss::%uuid of {_player}%.Knowledge} by {_points}
         if {_morality} is "sin":
             increase {ss::%uuid of {_player}%.Sin} by {_points}
             send "&0[&aS&2Souls&0] &eAdded &6%{_points}%&e points to &6Sin" to {_player}
@@ -244,24 +248,6 @@ function revive(player: text):
     set {ss::%{_player}%::Abyss::Time} to unix timestamp of now - 1
     checkTimeAbyssTrap({_player})
 
-# Resurrects a player if possible
-function resurrect(caster: player, target: player):
-    if {ss::%uuid of {_target}%.Lifes} <= 0:
-        if {ss::%uuid of {_caster}%.Souls} >= {ss::%uuid of {_target}%::Abyss::Deaths}:
-            reduce {ss::%uuid of {_caster}%.Souls} by {ss::%uuid of {_target}%::Abyss::Deaths} * 5
-            revive(uuid of {_target})
-            # Free them from the abyss
-            kill {_target}
-            reduce {ss::%{_target}%.Deaths} by 1
-            # Send messages
-            send "&0[&aS&2Souls&0] &eYou have resurrected %{_target}%" to {_caster}
-            send "&0[&aS&2Souls&0] &eYou have been resurrected by %{_caster}%" to {_target}
-            stop
-        send "&0[&aS&2Souls&0] &eYou need &6%{ss::%uuid of {_target}%::Abyss::Deaths}*5%&e souls to resurrect &6%{_target}%" to {_caster}
-        stop
-    send "&0[&aS&2Souls&0] &eYou cannot resurrect someone who isn't dead!" to {_caster}
-    stop
-
 # Setting up stats for the first time
 on join:
     # UUID & Name
@@ -290,8 +276,8 @@ on join:
     if {ss::%uuid of player%.KR} is not set:
         set {ss::%uuid of player%.KR::*} to "null"
     # Morality
-    if {ss::%uuid of player%.MP} is not set:
-        set {ss::%uuid of player%.MP} to 2
+    if {ss::%uuid of player%.Knowledge} is not set:
+        set {ss::%uuid of player%.Knowledge} to 2
     if {ss::%uuid of player%.Virtue} is not set:
         set {ss::%uuid of player%.Virtue} to 0
     if {ss::%uuid of player%.Sin} is not set:
@@ -311,6 +297,9 @@ on join:
         set {ss::%uuid of player%::Abyss::Trap} to 0 # 1 - Trapped, 0 - Not Trapped
     if {ss::%uuid of player%::Abyss::Deaths} is not set:
         set {ss::%uuid of player%::Abyss::Deaths} to 0 # How many times the player died and got trapped in the Abyss as a result of having no lifes left.
+    # Dissonant Item
+    if {ss::%uuid of player%.dissonant} is not set:
+        set {ss::%uuid of event-player%.dissonant} to 0
     # On Join events
     verifyLifes(player)
 
@@ -359,6 +348,9 @@ on death:
     set {ss::%uuid of attacker%.KDR} to KDR({ss::%uuid of attacker%.Kills}, {ss::%uuid of attacker%.Deaths})
     chkLV(uuid of attacker)
     send "&0[&aS&2Souls&0] &eYou have killed &6%victim%&e and gained &6%{_expDrop}%&e ExP!" to attacker
+    chance of 25%:
+        increase {ss::%uuid of attacker%.Souls} by {ss::%uuid of attacker%.Prestige}+1 # We give the attacker souls
+        send "&0[&aS&2Souls&0] &eYou have gained &6%{ss::%uuid of attacker%.Prestige}%&e soul(s)!" to attacker
 
 # Abyss World Escape Prevention Event
 on player world change:
@@ -393,7 +385,8 @@ command /ss:
         send "&0[&aS&2Souls&0] &6ss-morality &e - &6Command for managing morality" to player
         send "&0[&aS&2Souls&0] &6ss-resurrect &e - &6Resurrects a player who is trapped in the abyss" to player
         send "&0[&aS&2Souls&0] &6ss-abyss &e - &6Command for managing your abyss trap status" to player
-        send "&0[&aS&2Souls&0] &6ss-ping &e - &6It doesn't do anything usefull, don't try it" to player
+        send "&0[&aS&2Souls&0] &6ss-ability &e - &6Command for ability help" to player
+        send "&0[&aS&2Souls&0] &6ss-ping &e - &6It doesn't do anything usefull, don't try it, &4no warranty will be provided" to player
         send "&0[&aS&2Souls&0] &eAdmin commands are &6ss-admin-SubCommand&e." to player
 
 command /ss-shatter <player>:
@@ -427,7 +420,7 @@ command /ss-stats [<player>]:
         send "&0[&aS&2Souls&0] &eSouls: &6%{ss::%{_statstarget}%.Souls}%" to player
         send "&0[&aS&2Souls&0] &eVirtue: &6%{ss::%{_statstarget}%.Virtue}%" to player
         send "&0[&aS&2Souls&0] &eSin: &6%{ss::%{_statstarget}%.Sin}%" to player
-        send "&0[&aS&2Souls&0] &eMorality Knowledge: &6%{ss::%{_statstarget}%.MP}%" to player
+        send "&0[&aS&2Souls&0] &eKnowledge: &6%{ss::%{_statstarget}%.Knowledge}%" to player
 
 command /ss-prestige:
     permission: shatteredsouls.command.player.prestige
@@ -499,12 +492,6 @@ command /ss-morality [<text>] [<num>]:
                 stop
             stop
 
-command /ss-resurrect <player>:
-    permission: shatteredsouls.command.player.resurrect
-    aliases: /ss-resurrect, /souls-resurrect, /ssouls-resurrect, /resurrect
-    trigger:
-        resurrect(player, args-1)
-
 command /ss-abyss [<text>]:
     permission: shatteredsouls.command.player.abyss
     aliases: /ss-abyss, /souls-abyss, /ssouls-abyss, /abyss
@@ -532,27 +519,62 @@ command /ss-abyss [<text>]:
         send "&0[&aS&2Souls&0] &eYou are not abyss trapped!" to player
         send formatted "&0[&aS&2Souls&0] <cmd:/ss-abyss free><tooltip:&7Status: &aUnlocked>&5<< Awaken >>" to player
 
-command /ss-ping:
-    permission: shatteredsouls.command.player.ping
-    aliases: /ss-ping, /souls-ping, /ssouls-ping, /ping
+command /ss-ability [<text>]:
+    permission: shatteredsouls.command.player.ability
+    aliases: /ss-ability, /souls-ability, /ssouls-ability, /ability, /ss-abilities, /souls-abilities, /ssouls-abilities, /abilities
     trigger:
-        set {ss::%player%.UUID} to uuid of player
-        set {ss::%uuid of player%.Name} to name of player
-        set {ss::%uuid of player%.LV} to 1
-        set {ss::%uuid of player%.ExP} to 0
-        set {ss::%uuid of player%.Title} to ""
-        set {ss::%uuid of player%.Lifes} to 10
-        set {ss::%uuid of player%.Deaths} to 0
-        set {ss::%uuid of player%.Kills} to 0
-        set {ss::%uuid of player%.KDR} to KDR({ss::%uuid of player%.Kills},{ss::%uuid of player%.Deaths})
-        set {ss::%uuid of player%.Souls} to 0
-        set {ss::%uuid of player%.KR::*} to "null"
-        set {ss::%uuid of player%.MP} to 2
-        set {ss::%uuid of player%.Virtue} to 0
-        set {ss::%uuid of player%.Sin} to 0
-        set {ss::%uuid of player%.Prestige} to 0
-        send "Ping, Pong"
-        send "Your data is gone"
+        # If args-1 is set, shows how to use that specific ability.
+        # If args-1 is not set, shows you your abilities
+        stop
+
+command /ss-dissonant <text>:
+    permission: shatteredsouls.command.player.dissonant
+    aliases: /ss-dissonant, /souls-dissonant, /ssouls-dissonant, /dissonant
+    trigger:
+        # Sub Commands: Set, Get
+        if args-1 is "set":
+            if {ss::%uuid of player%.Souls} >= 20:
+                if {ss::%player%.dissonantset} is not set:
+                    reduce {ss::%uuid of player%.Souls} by 20
+                    stop
+                send "&0[&aS&2Souls&0] &eSet your dissonant item to &6{ss::%%uuid of player%%.dissonant}&r&e!"
+                stop
+            send "&0[&aS&2Souls&0] &eYou need &620 souls&e to set your dissonant item!" 
+            stop
+        # the "set" sub command was not triggered, so it's get.
+        send "&0[&aS&2Souls&0] &eGiving you your dissonant item!"
+        give {ss::%uuid of player%.dissonant} to player
+
+command /ss-cleardata:
+    permission: shatteredsouls.command.player.ping
+    aliases: /ss-cleardata, /souls-cleardata, /ssouls-cleardata, /cleardata
+    trigger:
+        if {ss::%player%.ClearDataConfirm} is set:
+            set {ss::%player%.UUID} to uuid of player
+            set {ss::%uuid of player%.Name} to name of player
+            set {ss::%uuid of player%.LV} to 1
+            set {ss::%uuid of player%.ExP} to 0
+            set {ss::%uuid of player%.Title} to ""
+            set {ss::%uuid of player%.Lifes} to 10
+            set {ss::%uuid of player%.Deaths} to 0
+            set {ss::%uuid of player%.Kills} to 0
+            set {ss::%uuid of player%.KDR} to KDR({ss::%uuid of player%.Kills},{ss::%uuid of player%.Deaths})
+            set {ss::%uuid of player%.Souls} to 0
+            set {ss::%uuid of player%.KR::*} to "null"
+            set {ss::%uuid of player%.Knowledge} to 2
+            set {ss::%uuid of player%.Virtue} to 0
+            set {ss::%uuid of player%.Sin} to 0
+            set {ss::%uuid of player%.Prestige} to 0
+            send "Ping, Pong"
+            send "Your data is gone"
+            delete {ss::%player%.ClearDataConfirm}
+            stop
+        send "WARNING: This will erase all your shattered souls data! Run the command again to confirm"
+        set {ss::%player%.ClearDataConfirm} to 1
+        wait 10 seconds
+        if {ss::%player%.ClearDataConfirm} is set:
+            delete {ss::%player%.ClearDataConfirm}
+            send "/ping confirmation timed out"
 
 # ---- Admin Commands ----
 
@@ -572,7 +594,7 @@ command /ss-admin-reset <player>:
         set {ss::%uuid of args-1%.KDR} to KDR({ss::%uuid of args-1%.Kills},{ss::%uuid of args-1%.Deaths})
         set {ss::%uuid of args-1%.Souls} to 0
         set {ss::%uuid of args-1%.KR::*} to "null"
-        set {ss::%uuid of args-1%.MP} to 2
+        set {ss::%uuid of args-1%.Knowledge} to 2
         set {ss::%uuid of args-1%.Virtue} to 0
         set {ss::%uuid of args-1%.Sin} to 0
         set {ss::%uuid of args-1%.Prestige} to 0
@@ -622,18 +644,14 @@ command /ss-admin-love <player> <text> [<num>]:
             stop
         if args-2 is "take":
             reduce {ss::%uuid of args-1%.LV} by args-3
-            reduce {ss::%uuid of args-1%.MP} by args-3 * 2
             send "&0[&cS&4Souls&0] &eDecreased &6%args-1%'s&e LV by &6%args-3%&e!"
             stop
         if args-2 is "set":
             set {ss::%uuid of args-1%.LV} to args-3
-            set {ss::%uuid of args-1%.MP} to args-3 * 2
             send "&0[&cS&4Souls&0] &eSet &6%args-1%'s&e LV to &6%args-3%&e!"
-            send "&0[&cS&4Souls&0] &ePlease note that their MoralityPoints might have been overwritten!"
             stop
         if args-2 is "give":
             increase {ss::%uuid of args-1%.LV} by args-3
-            increase {ss::%uuid of args-1%.MP} by args-3 * 2
             send "&0[&cS&4Souls&0] &eIncreased &6%args-1%'s&e LV by &6%args-3%&e!"
             stop
         send "&0[&cS&4Souls&0] &eUnknown operation &6%args-2%&e!"
@@ -808,71 +826,70 @@ command /ss-admin-prestige <player> <text> [<num>]:
             stop
         if args-2 is "take":
             reduce {ss::%uuid of args-1%.Prestige} by args-3
-            reduce {ss::%uuid of args-1%.MP} by 100 * args-3
             send "&0[&cS&4Souls&0] &eDecreased &6%args-1%'s&e Prestiges by &6%args-3%&e!"
             stop
         if args-2 is "set":
             set {ss::%uuid of args-1%.Prestige} to args-3
-            set {ss::%uuid of args-1%.MP} to args-3 * 100
             send "&0[&cS&4Souls&0] &eSet &6%args-1%'s&e Prestiges to &6%args-3%&e!"
-            send "&0[&cS&4Souls&0] &ePlease note that their MoralityPoints might have been overwritten!"
             stop
         if args-2 is "give":
             loop args-3 times:
                 increase {ss::%uuid of args-1%.LV} by 50
-                increase {ss::%uuid of args-1%.MP} by 100
                 prestige(uuid of args-1)
             send "&0[&cS&4Souls&0] &eIncreased &6%args-1%'s&e Prestiges by &6%args-3%&e!"
             stop
         send "&0[&cS&4Souls&0] &eUnknown operation &6%args-2%&e!"
 
-# TODO:
-command /ss-admin-morality <player> <text> <text> <text> [<num>]:
+command /ss-admin-morality <player> <text> <text> [<num>]:
     permission: shatteredsouls.command.admin.morality
     aliases: /ss-admin-morality, /souls-admin-morality, /ssouls-admin-morality, /admin-morality
     trigger:
         if args-2 is "get":
-            send "&0[&cS&4Souls&0] &6%args-1%'s&e LV is &6%{ss::%uuid of args-1%.LV}%&e!"
-            stop
-        if args-3 isn't set:
-            send "&0[&cS&4Souls&0] &eYou must specify how much!"
-            stop
-        if args-2 is "take":
-            reduce {ss::%uuid of args-1%.LV} by args-3
-            send "&0[&cS&4Souls&0] &eDecreased &6%args-1%'s&e LV by &6%args-3%&e!"
-            stop
+            set {_tier} to getMoralityTier(uuid of args-1, args-3)
+            send "&0[&cS&4Souls&0] &6%args-1%&e - %args-3% &eTier &6%{_tier}%"
+            stop 
         if args-2 is "set":
-            set {ss::%uuid of args-1%.LV} to args-3
-            send "&0[&cS&4Souls&0] &eSet &6%args-1%'s&e LV to &6%args-3%&e!"
-            stop
-        if args-2 is "give":
-            increase {ss::%uuid of args-1%.LV} by args-3
-            send "&0[&cS&4Souls&0] &eIncreased &6%args-1%'s&e LV by &6%args-3%&e!"
+            if args-4 isn't set:
+                send "&0[&cS&4Souls&0] &eYou must specify how much points!"
+                stop
+            if args-3 is "sin":
+                addMoralityPoints(args-1, args-3, args-4)
+                send "&0[&cS&4Souls&0] &eSet &6%args-1%'s %args-3%&e points to &6%args-4%&e!"
+                stop
+            if args-3 is "virtue":
+                addMoralityPoints(args-1, args-3, args-4)
+                send "&0[&cS&4Souls&0] &eSet &6%args-1%'s %args-3%&e points to &6%args-4%&e!"
+                stop
+            if args-3 is "neutral":
+                addMoralityPoints(args-1, "sin", args-4)
+                addMoralityPoints(args-1, "virtue", args-4)
+                send "&0[&cS&4Souls&0] &eSet &6%args-1%'s %args-3%&e points to &6%args-4%&e!"
+                stop    
+            send "&0[&cS&4Souls&0] &eUnknown morality &6%args-3%&e!"
             stop
         send "&0[&cS&4Souls&0] &eUnknown operation &6%args-2%&e!"
 
-# TODO:
-command /ss-admin-moralityp <player> <text> [<num>]:
-    permission: shatteredsouls.command.admin.moralitypoints
-    aliases: /ss-admin-moralityp, /souls-admin-moralityp, /ssouls-admin-moralityp, /admin-moralityp
+command /ss-admin-knowledge <player> <text> [<num>]:
+    permission: shatteredsouls.command.admin.knowledge
+    aliases: /ss-admin-knowledge, /souls-admin-knowledge, /ssouls-admin-knowledge, /admin-knowledge
     trigger:
         if args-2 is "get":
-            send "&0[&cS&4Souls&0] &6%args-1%'s&e LV is &6%{ss::%uuid of args-1%.LV}%&e!"
+            send "&0[&cS&4Souls&0] &6%args-1%'s&e avabiable Knowledge is &6%{ss::%uuid of args-1%.Knowledge}%&e!"
             stop
         if args-3 isn't set:
             send "&0[&cS&4Souls&0] &eYou must specify how much!"
             stop
         if args-2 is "take":
-            reduce {ss::%uuid of args-1%.LV} by args-3
-            send "&0[&cS&4Souls&0] &eDecreased &6%args-1%'s&e LV by &6%args-3%&e!"
+            reduce {ss::%uuid of args-1%.Knowledge} by args-3
+            send "&0[&cS&4Souls&0] &eDecreased &6%args-1%'s&e Knowledge by &6%args-3%&e!"
             stop
         if args-2 is "set":
-            set {ss::%uuid of args-1%.LV} to args-3
-            send "&0[&cS&4Souls&0] &eSet &6%args-1%'s&e LV to &6%args-3%&e!"
+            set {ss::%uuid of args-1%.Knowledge} to args-3
+            send "&0[&cS&4Souls&0] &eSet &6%args-1%'s&e Knowledge to &6%args-3%&e!"
             stop
         if args-2 is "give":
-            increase {ss::%uuid of args-1%.LV} by args-3
-            send "&0[&cS&4Souls&0] &eIncreased &6%args-1%'s&e LV by &6%args-3%&e!"
+            increase {ss::%uuid of args-1%.Knowledge} by args-3
+            send "&0[&cS&4Souls&0] &eIncreased &6%args-1%'s&e Knowledge by &6%args-3%&e!"
             stop
         send "&0[&cS&4Souls&0] &eUnknown operation &6%args-2%&e!"
 
@@ -907,7 +924,7 @@ command /ss-admin-adeaths <player> <text> [<num>]:
     aliases: /ss-admin-adeaths, /souls-admin-adeaths, /ssouls-admin-adeaths, /admin-adeaths
     trigger:
         if args-2 is "get":
-            send "&0[&cS&4Souls&0] &6%args-1%&e has &6%{ss::%uuid of args-1%::Abyss::Deaths}%&e abyssial deaths!"
+            send "&0[&cS&4Souls&0] &6%args-1%&e has &6%{ss::%uuid of args-1%::Abyss::Deaths}%&e abyssal deaths!"
             stop
         if args-3 isn't set:
             send "&0[&cS&4Souls&0] &eYou must specify how much!"
@@ -934,7 +951,58 @@ command /ss-admin-adeaths <player> <text> [<num>]:
 #  /_/   \_\_.__/|_|_|_|\__|_|\___||___/
 #                                       
 # 
-
+# TODO:
 # -- Ability Functions --
 
+# Resurrects a player if possible
+function resurrect(caster: player, target: player):
+    if {ss::%uuid of {_caster}%.Prestige} <= 0:
+        send "&0[&aS&2Souls&0] &eYou need atleast &61 Prestige&e to use resurrect!" to {_caster}
+        stop
+    if {ss::%uuid of {_target}%.Lifes} <= 0:
+        if {ss::%uuid of {_caster}%.Souls} >= {ss::%uuid of {_target}%::Abyss::Deaths}:
+            reduce {ss::%uuid of {_caster}%.Souls} by {ss::%uuid of {_target}%::Abyss::Deaths} * 5
+            revive(uuid of {_target})
+            # Free them from the abyss
+            kill {_target}
+            reduce {ss::%{_target}%.Deaths} by 1
+            # Send messages
+            send "&0[&aS&2Souls&0] &eYou have resurrected %{_target}%" to {_caster}
+            send "&0[&aS&2Souls&0] &eYou have been resurrected by %{_caster}%" to {_target}
+            stop
+        send "&0[&aS&2Souls&0] &eYou need &6%{ss::%uuid of {_target}%::Abyss::Deaths}*5%&e souls to resurrect &6%{_target}%" to {_caster}
+        stop
+    send "&0[&aS&2Souls&0] &eYou cannot resurrect someone who isn't dead!" to {_caster}
+    stop
+
+function soulmend(caster: player):
+    set {_soulcost} to 10*(15-{ss::%uuid of {_caster}%.Lifes})
+    if {ss::%uuid of {_caster}%.Lifes} >= 15:
+        send "&0[&aS&2Souls&0] &eYou cannot have more than 15 lifes! If you do have more, pray the server admins don't find out" to {_caster}
+        stop
+    if {ss::%uuid of {_caster}%.Souls} >= {_soulcost}:
+        reduce {ss::%uuid of {_caster}%.Souls} by {_soulcost}
+        increase {ss::%uuid of {_caster}%.Lifes} by 1
+        send "&0[&aS&2Souls&0] &eLost &6%{_soulcost}%&e souls, gained &61&e life!" to {_caster}    
+        stop
+    send "&0[&aS&2Souls&0] &eYou need &6%{_soulcost}%&e souls!" to {_caster}    
+    stop
+
 # -- Ability Commands --
+
+# Prestige 1 Ability - Resurrection
+# Requirements:
+# - Prestige 1
+command /ss-resurrect <player>:
+    permission: shatteredsouls.command.player.resurrect
+    aliases: /ss-resurrect, /souls-resurrect, /ssouls-resurrect, /resurrect
+    trigger:
+        resurrect(player, args-1)
+
+# Prestige 0 Ability - Soul Mend
+# Requirements: None
+command /ss-soulmend:
+    permission: shatteredsouls.command.player.soulmend
+    aliases: /ss-soulmend, /souls-soulmend, /ssouls-soulmend, /soulmend
+    trigger:
+        soulmend(player)

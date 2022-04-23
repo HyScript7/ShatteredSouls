@@ -1,7 +1,10 @@
 # Unimportant testing scripts
 *.fish
 *.py
+
+# Visual Studio Code Stuff
 .vscode/
 
 # Sheet with abilities
 abilities.ods
+.~lock.abilities.ods#
