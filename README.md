@@ -1,3 +1,5 @@
+I have no further interest in developing this skript. I might rewrite it in paper's API sometime in the future as a plugin. If anyone wants to continue this idea, feel free to fork it and release as your own.
+
 # ShatteredSouls
 
 ShatteredSouls Version 1.0
